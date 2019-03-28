@@ -1863,6 +1863,7 @@
         Utils.sprintf(' class="%s"', style.classes || (Array.isArray(item) ? undefined : item._class)),
         ` data-index="${i}"`,
         Utils.sprintf(' data-uniqueid="%s"', item[this.options.uniqueId]),
+        Utils.sprintf(' data-has-detail-view="%s"', (!this.options.cardView && this.options.detailView && Utils.calculateObjectValue(null, this.options.detailFilter, [i, item])) ? 'true' : undefined),
         Utils.sprintf('%s', data_),
         '>'
       )
@@ -2066,7 +2067,8 @@
         const $tr = $td.parent()
         const $cardviewArr = $(target).parents('.card-views').children()
         const $cardviewTarget = $(target).parents('.card-view')
-        const item = this.data[$tr.data('index')]
+        const rowIndex = $tr.data('index')
+        const item = this.data[rowIndex]
         const index = this.options.cardView ? $cardviewArr.index($cardviewTarget) : $td[0].cellIndex
         const fields = this.getVisibleFields()
         const field = fields[this.options.detailView && !this.options.cardView ? index - 1 : index]
@@ -2094,13 +2096,13 @@
         }
 
         if (type === 'click' && this.options.detailViewByClick) {
-          this.toggleDetailView($tr.find('.detail-icon'), this.header.detailFormatters[index - 1])
+          this.toggleDetailView(rowIndex)
         }
       })
 
       this.$body.find('> tr[data-index] > td > .detail-icon').off('click').on('click', e => {
         e.preventDefault()
-        this.toggleDetailView($(e.currentTarget))
+        this.toggleDetailView($(e.currentTarget).parent().parent().data('index'))
         return false
       })
 
@@ -2163,27 +2165,15 @@
       this.trigger('post-body', data)
     }
 
-    toggleDetailView ($iconElement, columnDetailFormatter) {
-      const $tr = $iconElement.parent().parent()
-      const index = $tr.data('index')
-      const row = this.data[index]
+    toggleDetailView (index) {
+      const $tr = this.$body.find(Utils.sprintf('> tr[data-index="%s"]', index))
 
-      // remove and update
       if ($tr.next().is('tr.detail-view')) {
-        $iconElement.html(Utils.sprintf(this.constants.html.icon, this.options.iconsPrefix, this.options.icons.detailOpen))
-        this.trigger('collapse-row', index, row, $tr.next())
-        $tr.next().remove()
+        this.collapseRow(index)
       } else {
-        $iconElement.html(Utils.sprintf(this.constants.html.icon, this.options.iconsPrefix, this.options.icons.detailClose))
-        $tr.after(Utils.sprintf('<tr class="detail-view"><td colspan="%s"></td></tr>', $tr.children('td').length))
-        const $element = $tr.next().find('td')
-        const detailFormatter = columnDetailFormatter || this.options.detailFormatter
-        const content = Utils.calculateObjectValue(this.options, detailFormatter, [index, row, $element], '')
-        if ($element.length === 1) {
-          $element.append(content)
-        }
-        this.trigger('expand-row', index, row, $element)
+        this.expandRow(index)
       }
+
       this.resetView()
     }
 
@@ -3286,66 +3276,56 @@
       this.onSearch({currentTarget: $search})
     }
 
-    expandRow_ (expand, index) {
-      const $tr = this.$body.find(Utils.sprintf('> tr[data-index="%s"]', index))
-      if ($tr.next().is('tr.detail-view') === (!expand)) {
-        $tr.find('> td > .detail-icon').click()
-      }
-    }
-
     expandRow (index) {
-      this.expandRow_(true, index)
+      const row = this.data[index]
+      const $tr = this.$body.find(Utils.sprintf('> tr[data-index="%s"][data-has-detail-view]', index))
+      if ($tr.next().is('tr.detail-view')) {
+        return
+      }
+
+      if (this.options.showDetailView) {
+        $tr.find('a.detail-icon').html(Utils.sprintf(this.constants.html.icon, this.options.iconsPrefix, this.options.icons.detailClose))
+      }
+
+      $tr.after(Utils.sprintf('<tr class="detail-view"><td colspan="%s"></td></tr>', $tr.children('td').length))
+
+      const $element = $tr.next().find('td')
+
+      const detailFormatter = this.header.detailFormatters[index - 1] || this.options.detailFormatter
+      const content = Utils.calculateObjectValue(this.options, detailFormatter, [index, row, $element], '')
+      if ($element.length === 1) {
+        $element.append(content)
+      }
+
+      this.trigger('expand-row', index, row, $element)
     }
 
     collapseRow (index) {
-      this.expandRow_(false, index)
+      const row = this.data[index]
+      const $tr = this.$body.find(Utils.sprintf('> tr[data-index="%s"][data-has-detail-view]', index))
+      if (!$tr.next().is('tr.detail-view')) {
+        return
+      }
+
+      if (this.options.showDetailView) {
+        $tr.find('a.detail-icon').html(Utils.sprintf(this.constants.html.icon, this.options.iconsPrefix, this.options.icons.detailOpen))
+      }
+
+      this.trigger('collapse-row', index, row, $tr.next())
+      $tr.next().remove()
     }
 
-    expandAllRows (isSubTable) {
-      if (isSubTable) {
-        const $tr = this.$body.find(Utils.sprintf('> tr[data-index="%s"]', 0))
-        let detailIcon = null
-        let executeInterval = false
-        let idInterval = -1
-
-        if (!$tr.next().is('tr.detail-view')) {
-          $tr.find('> td > .detail-icon').click()
-          executeInterval = true
-        } else if (!$tr.next().next().is('tr.detail-view')) {
-          $tr.next().find('.detail-icon').click()
-          executeInterval = true
-        }
-
-        if (executeInterval) {
-          try {
-            idInterval = setInterval(() => {
-              detailIcon = this.$body.find('tr.detail-view').last().find('.detail-icon')
-              if (detailIcon.length > 0) {
-                detailIcon.click()
-              } else {
-                clearInterval(idInterval)
-              }
-            }, 1)
-          } catch (ex) {
-            clearInterval(idInterval)
-          }
-        }
-      } else {
-        const trs = this.$body.children()
-        for (let i = 0; i < trs.length; i++) {
-          this.expandRow_(true, $(trs[i]).data('index'))
-        }
+    expandAllRows () {
+      const trs = this.$body.find('> tr[data-index][data-has-detail-view]')
+      for (let i = 0; i < trs.length; i++) {
+        this.expandRow($(trs[i]).data('index'))
       }
     }
 
-    collapseAllRows (isSubTable) {
-      if (isSubTable) {
-        this.expandRow_(false, 0)
-      } else {
-        const trs = this.$body.children()
-        for (let i = 0; i < trs.length; i++) {
-          this.expandRow_(false, $(trs[i]).data('index'))
-        }
+    collapseAllRows () {
+      const trs = this.$body.find('> tr[data-index][data-has-detail-view]')
+      for (let i = 0; i < trs.length; i++) {
+        this.collapseRow($(trs[i]).data('index'))
       }
     }
 
@@ -3398,7 +3378,7 @@
     'toggleView',
     'refreshOptions',
     'resetSearch',
-    'expandRow', 'collapseRow',
+    'expandRow', 'collapseRow', 'toggleDetailView',
     'expandAllRows', 'collapseAllRows',
     'updateFormatText', 'updateCellById'
   ]
