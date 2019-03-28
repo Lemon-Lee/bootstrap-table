@@ -450,6 +450,7 @@
     uniqueId: undefined,
     cardView: false,
     detailView: false,
+    showDetailView: true,
     detailViewByClick: false,
     detailFormatter (index, row) {
       return ''
@@ -876,7 +877,7 @@
       this.options.columns.forEach((columns, i) => {
         html.push('<tr>')
 
-        if (i === 0 && !this.options.cardView && this.options.detailView) {
+        if (i === 0 && !this.options.cardView && this.options.detailView && this.options.showDetailView) {
           html.push(`<th class="detail" rowspan="${this.options.columns.length}">
             <div class="fht-cell"></div>
             </th>
@@ -1870,7 +1871,7 @@
         html.push(`<td colspan="${this.header.fields.length}"><div class="card-views">`)
       }
 
-      if (!this.options.cardView && this.options.detailView) {
+      if (!this.options.cardView && this.options.detailView && this.options.showDetailView) {
         html.push('<td>')
 
         if (Utils.calculateObjectValue(null, this.options.detailFilter, [i, item])) {
@@ -2445,7 +2446,7 @@
       const data = this.getData()
       const html = []
 
-      if (!this.options.cardView && this.options.detailView) {
+      if (!this.options.cardView && this.options.detailView && this.options.showDetailView) {
         html.push('<th class="detail"><div class="th-inner"></div><div class="fht-cell"></div></th>')
       }
 
